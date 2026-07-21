@@ -118,7 +118,27 @@
       <canvas class="product-customizer__canvas" data-customizer-canvas></canvas>
     </div>
 
-    {%- comment -%} Side tabs, text controls, drag and property inputs are added in later phases. {%- endcomment -%}
     <div class="product-customizer__panel" data-customizer-panel></div>
+
+    {%- comment -%}
+      Line item properties (PRD 7). Bound to the product form via the form attribute
+      so Dawn's AJAX product-form.js serializes them with no fork. JS keeps each side's
+      inputs enabled+populated only when that side has text; empty sides stay disabled
+      so they are stripped from the order. Underscore-prefixed props (_Front Mockup,
+      _Back Mockup, _Design ID) are hidden from cart/checkout and filled in Phase 6.
+    {%- endcomment -%}
+    <div class="product-customizer__properties">
+      <input type="hidden" name="properties[Front Text]"      data-prop="front-text"   form="{{ product_form_id }}">
+      <input type="hidden" name="properties[Front Font]"      data-prop="front-font"   form="{{ product_form_id }}">
+      <input type="hidden" name="properties[Front Color]"     data-prop="front-color"  form="{{ product_form_id }}">
+      <input type="hidden" name="properties[Front Placement]" data-prop="front-place"  form="{{ product_form_id }}">
+      <input type="hidden" name="properties[Back Text]"       data-prop="back-text"    form="{{ product_form_id }}">
+      <input type="hidden" name="properties[Back Font]"       data-prop="back-font"    form="{{ product_form_id }}">
+      <input type="hidden" name="properties[Back Color]"      data-prop="back-color"   form="{{ product_form_id }}">
+      <input type="hidden" name="properties[Back Placement]"  data-prop="back-place"   form="{{ product_form_id }}">
+      <input type="hidden" name="properties[_Front Mockup]"   data-prop="front-mockup" form="{{ product_form_id }}">
+      <input type="hidden" name="properties[_Back Mockup]"    data-prop="back-mockup"  form="{{ product_form_id }}">
+      <input type="hidden" name="properties[_Design ID]"      data-prop="design-id"    form="{{ product_form_id }}">
+    </div>
   </product-customizer>
 </div>

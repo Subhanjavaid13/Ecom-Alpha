@@ -35,6 +35,7 @@ class ProductCustomizer extends HTMLElement {
     this.productFormId = this.dataset.productFormId;
 
     this.initState();
+    this.cacheInputs();
     this.initCanvas();
     this.initDrag();
     this.buildTabs();
@@ -42,6 +43,7 @@ class ProductCustomizer extends HTMLElement {
     this.loadFonts();
     this.setActiveBase(this.config.selectedVariantId);
     this.subscribeToVariantChange();
+    this.syncHiddenInputs();
 
     this.setAttribute('data-ready', 'true');
     this.dispatchEvent(
@@ -90,10 +92,11 @@ class ProductCustomizer extends HTMLElement {
     return side === 'back' ? this.printAreaBack : this.printAreaFront;
   }
 
-  /** Phase 4 control entry point: merge a patch into the active side and redraw. */
+  /** Control entry point: merge a patch into the active side, redraw, mirror to inputs. */
   updateSide(patch) {
     Object.assign(this.state[this.side], patch);
     this.render();
+    this.syncHiddenInputs();
   }
 
   /** Clamp a normalized point into the active side's print area (used by drag). */
@@ -211,6 +214,7 @@ class ProductCustomizer extends HTMLElement {
     }
     this.syncControls();
     this.render();
+    this.syncHiddenInputs();
   }
 
   /** Reflect the active side's state into the controls (called on tab switch too). */
@@ -239,6 +243,58 @@ class ProductCustomizer extends HTMLElement {
     if (!this.ctrl || !this.ctrl.charcount) return;
     const max = this.config.maxChars || 24;
     this.ctrl.charcount.textContent = `${this.ctrl.text.value.length}/${max}`;
+  }
+
+  /* ---- line item property inputs (PRD 7 / 8.3) ---- */
+
+  cacheInputs() {
+    const q = (key) => this.querySelector(`[data-prop="${key}"]`);
+    this.inputs = {
+      front: { text: q('front-text'), font: q('front-font'), color: q('front-color'), place: q('front-place') },
+      back: { text: q('back-text'), font: q('back-font'), color: q('back-color'), place: q('back-place') },
+      frontMockup: q('front-mockup'),
+      backMockup: q('back-mockup'),
+      designId: q('design-id'),
+    };
+    // Mockup + design-id are filled in Phase 6; keep them out of the submission until then.
+    [this.inputs.frontMockup, this.inputs.backMockup, this.inputs.designId].forEach((input) => {
+      if (input) input.disabled = true;
+    });
+  }
+
+  /** Human-readable, ASCII placement for the order (position + size fold into Placement). */
+  placementString(side_state) {
+    return `x:${Math.round(side_state.x * 100)}% y:${Math.round(side_state.y * 100)}% size:${side_state.size}`;
+  }
+
+  /** Effective text for a side (preset or custom), trimmed. */
+  sideText(side_state) {
+    return (side_state.mode === 'preset' ? side_state.preset : side_state.text).trim();
+  }
+
+  /**
+   * Mirror both sides' state into the hidden property inputs. A side with text has
+   * its inputs enabled + populated; an empty side's inputs are disabled so they are
+   * stripped from the submitted form (unused side -> no properties on the order).
+   */
+  syncHiddenInputs() {
+    if (!this.inputs) return;
+    ['front', 'back'].forEach((side) => {
+      const group = this.inputs[side];
+      if (!group.text) return;
+      const state = this.state[side];
+      const text = this.sideText(state);
+      const active = text.length > 0;
+
+      group.text.value = active ? text : '';
+      group.font.value = active ? state.font : '';
+      group.color.value = active ? state.color : '';
+      group.place.value = active ? this.placementString(state) : '';
+
+      [group.text, group.font, group.color, group.place].forEach((input) => {
+        input.disabled = !active;
+      });
+    });
   }
 
   /* ---- drag-to-place (pointer + touch; clamped to the print area) ---- */
@@ -403,7 +459,7 @@ class ProductCustomizer extends HTMLElement {
   }
 
   drawText(ctx, side_state, w, h, side) {
-    const text = (side_state.mode === 'preset' ? side_state.preset : side_state.text).trim();
+    const text = this.sideText(side_state);
     if (!text) return; // empty text -> no text layer (and no property/mockup later)
 
     const pa = this.printAreaFor(side);
