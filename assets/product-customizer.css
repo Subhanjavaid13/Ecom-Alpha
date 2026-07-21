@@ -65,6 +65,104 @@
   touch-action: none; /* lets later phases own pointer drag without page scroll */
 }
 
+.product-customizer__canvas.is-dragging {
+  cursor: grabbing;
+}
+
+.product-customizer__canvas {
+  cursor: grab;
+}
+
 .product-customizer__panel {
   margin-top: 1.5rem;
+}
+
+.product-customizer__controls {
+  display: grid;
+  gap: 1.4rem;
+  max-width: 44rem;
+  margin-inline: auto;
+}
+
+.pc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pc-field .form__label {
+  margin-bottom: 0;
+}
+
+.pc-row {
+  display: flex;
+  gap: 1.4rem;
+  align-items: flex-end;
+}
+
+.pc-field--grow {
+  flex: 1 1 auto;
+}
+
+.pc-mode {
+  flex-direction: row;
+  gap: 0.8rem;
+}
+
+.pc-mode__btn {
+  flex: 1 1 0;
+  padding: 0.8rem 1.2rem;
+  border: 0.1rem solid rgba(var(--color-foreground), 0.25);
+  border-radius: var(--inputs-radius, 0.4rem);
+  background: transparent;
+  color: rgb(var(--color-foreground));
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.pc-mode__btn.is-active {
+  background: rgb(var(--color-foreground));
+  color: rgb(var(--color-background));
+  border-color: rgb(var(--color-foreground));
+}
+
+.pc-input,
+.pc-select {
+  width: 100%;
+  padding: 1rem 1.2rem;
+  font-size: 1.5rem;
+  color: rgb(var(--color-foreground));
+  background-color: rgb(var(--color-background));
+  border: 0.1rem solid rgba(var(--color-foreground), 0.25);
+  border-radius: var(--inputs-radius, 0.4rem);
+}
+
+.pc-charcount {
+  align-self: flex-end;
+  font-size: 1.1rem;
+  opacity: 0.7;
+}
+
+.pc-color {
+  width: 4.8rem;
+  height: 4.4rem;
+  padding: 0.2rem;
+  border: 0.1rem solid rgba(var(--color-foreground), 0.25);
+  border-radius: var(--inputs-radius, 0.4rem);
+  background: rgb(var(--color-background));
+  cursor: pointer;
+}
+
+.pc-range {
+  width: 100%;
+  accent-color: rgb(var(--color-foreground));
+}
+
+.pc-mode__btn:focus-visible,
+.pc-input:focus-visible,
+.pc-select:focus-visible,
+.pc-color:focus-visible,
+.pc-range:focus-visible {
+  outline: 0.2rem solid rgb(var(--color-foreground));
+  outline-offset: 0.2rem;
 }

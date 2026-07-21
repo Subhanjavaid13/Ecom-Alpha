@@ -36,7 +36,9 @@ class ProductCustomizer extends HTMLElement {
 
     this.initState();
     this.initCanvas();
+    this.initDrag();
     this.buildTabs();
+    this.buildControls();
     this.loadFonts();
     this.setActiveBase(this.config.selectedVariantId);
     this.subscribeToVariantChange();
@@ -94,13 +96,192 @@ class ProductCustomizer extends HTMLElement {
     this.render();
   }
 
-  /** Clamp a normalized point into the active side's print area (used by Phase 4 drag). */
+  /** Clamp a normalized point into the active side's print area (used by drag). */
   clampToPrintArea(side, x, y) {
     const pa = this.printAreaFor(side);
     return {
       x: Math.min(Math.max(x, pa.x), pa.x + pa.w),
       y: Math.min(Math.max(y, pa.y), pa.y + pa.h),
     };
+  }
+
+  /* ---- controls (custom/preset text, font, color, size) ---- */
+
+  buildControls() {
+    if (!this.panel) return;
+    const uid = this.dataset.sectionId || 'pc';
+    const maxChars = this.config.maxChars || 24;
+    const presets = (this.config.presets || []).filter(Boolean);
+    const fonts = (this.config.fonts || []).filter(Boolean);
+
+    const modeMarkup = presets.length
+      ? `<div class="pc-field pc-mode" role="group" aria-label="Text mode">
+           <button type="button" class="pc-mode__btn is-active" data-mode="custom" aria-pressed="true">Custom text</button>
+           <button type="button" class="pc-mode__btn" data-mode="preset" aria-pressed="false">Preset</button>
+         </div>`
+      : '';
+    const presetMarkup = presets.length
+      ? `<div class="pc-field" data-preset-field hidden>
+           <label class="form__label" for="pc-preset-${uid}">Choose a preset</label>
+           <select class="select__select pc-select" id="pc-preset-${uid}" data-preset></select>
+         </div>`
+      : '';
+
+    this.panel.innerHTML = `
+      <div class="product-customizer__controls">
+        ${modeMarkup}
+        <div class="pc-field" data-custom-field>
+          <label class="form__label" for="pc-text-${uid}">Your text</label>
+          <input class="field__input pc-input" id="pc-text-${uid}" type="text" maxlength="${maxChars}" placeholder="Type your text" autocomplete="off">
+          <span class="pc-charcount" data-charcount>0/${maxChars}</span>
+        </div>
+        ${presetMarkup}
+        <div class="pc-field">
+          <label class="form__label" for="pc-font-${uid}">Font</label>
+          <select class="select__select pc-select" id="pc-font-${uid}" data-font></select>
+        </div>
+        <div class="pc-row">
+          <div class="pc-field">
+            <label class="form__label" for="pc-color-${uid}">Color</label>
+            <input class="pc-color" id="pc-color-${uid}" type="color" data-color value="#22242A">
+          </div>
+          <div class="pc-field pc-field--grow">
+            <label class="form__label" for="pc-size-${uid}">Size</label>
+            <input class="pc-range" id="pc-size-${uid}" type="range" min="20" max="120" step="1" data-size>
+          </div>
+        </div>
+      </div>`;
+
+    const fontSel = this.panel.querySelector('[data-font]');
+    fonts.forEach((f) => {
+      const opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f;
+      opt.style.fontFamily = `"${f}"`;
+      fontSel.appendChild(opt);
+    });
+
+    const presetSel = this.panel.querySelector('[data-preset]');
+    if (presetSel) {
+      presets.forEach((pv) => {
+        const opt = document.createElement('option');
+        opt.value = pv;
+        opt.textContent = pv;
+        presetSel.appendChild(opt);
+      });
+    }
+
+    this.ctrl = {
+      modeBtns: Array.from(this.panel.querySelectorAll('[data-mode]')),
+      customField: this.panel.querySelector('[data-custom-field]'),
+      presetField: this.panel.querySelector('[data-preset-field]'),
+      text: this.panel.querySelector(`#pc-text-${uid}`),
+      charcount: this.panel.querySelector('[data-charcount]'),
+      preset: presetSel,
+      font: fontSel,
+      color: this.panel.querySelector('[data-color]'),
+      size: this.panel.querySelector('[data-size]'),
+    };
+
+    this.ctrl.text.addEventListener('input', () => {
+      this.updateSide({ text: this.ctrl.text.value });
+      this.updateCharCount();
+    });
+    if (this.ctrl.preset) {
+      this.ctrl.preset.addEventListener('change', () => this.updateSide({ preset: this.ctrl.preset.value }));
+    }
+    this.ctrl.font.addEventListener('change', () => {
+      const font = this.ctrl.font.value;
+      this.updateSide({ font });
+      this.ensureFont(font).then(() => this.render()); // redraw once the face is ready
+    });
+    this.ctrl.color.addEventListener('input', () => this.updateSide({ color: this.ctrl.color.value }));
+    this.ctrl.size.addEventListener('input', () => this.updateSide({ size: Number(this.ctrl.size.value) }));
+    this.ctrl.modeBtns.forEach((btn) => btn.addEventListener('click', () => this.setMode(btn.dataset.mode)));
+
+    this.syncControls();
+  }
+
+  setMode(mode) {
+    const s = this.state[this.side];
+    s.mode = mode;
+    // Entering preset mode with nothing chosen: default to the first preset.
+    if (mode === 'preset' && !s.preset && this.ctrl.preset && this.ctrl.preset.options.length) {
+      s.preset = this.ctrl.preset.options[0].value;
+    }
+    this.syncControls();
+    this.render();
+  }
+
+  /** Reflect the active side's state into the controls (called on tab switch too). */
+  syncControls() {
+    if (!this.ctrl) return;
+    const s = this.state[this.side];
+    const isPreset = s.mode === 'preset';
+
+    this.ctrl.modeBtns.forEach((btn) => {
+      const active = btn.dataset.mode === s.mode;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (this.ctrl.customField) this.ctrl.customField.hidden = isPreset;
+    if (this.ctrl.presetField) this.ctrl.presetField.hidden = !isPreset;
+
+    this.ctrl.text.value = s.text;
+    if (this.ctrl.preset) this.ctrl.preset.value = s.preset;
+    this.ctrl.font.value = s.font;
+    this.ctrl.color.value = s.color;
+    this.ctrl.size.value = String(s.size);
+    this.updateCharCount();
+  }
+
+  updateCharCount() {
+    if (!this.ctrl || !this.ctrl.charcount) return;
+    const max = this.config.maxChars || 24;
+    this.ctrl.charcount.textContent = `${this.ctrl.text.value.length}/${max}`;
+  }
+
+  /* ---- drag-to-place (pointer + touch; clamped to the print area) ---- */
+
+  initDrag() {
+    if (!this.canvas || !this.preview) return;
+    let drag = null;
+
+    const onDown = (event) => {
+      const s = this.state[this.side];
+      const text = (s.mode === 'preset' ? s.preset : s.text).trim();
+      if (!text) return; // nothing to move
+      const rect = this.preview.getBoundingClientRect();
+      drag = { startX: event.clientX, startY: event.clientY, tx: s.x, ty: s.y, rect };
+      try {
+        this.canvas.setPointerCapture(event.pointerId);
+      } catch (_) {}
+      this.canvas.classList.add('is-dragging');
+      event.preventDefault();
+    };
+
+    const onMove = (event) => {
+      if (!drag || !drag.rect.width) return;
+      const dx = (event.clientX - drag.startX) / drag.rect.width;
+      const dy = (event.clientY - drag.startY) / drag.rect.height;
+      const point = this.clampToPrintArea(this.side, drag.tx + dx, drag.ty + dy);
+      this.updateSide({ x: point.x, y: point.y });
+      event.preventDefault();
+    };
+
+    const onUp = (event) => {
+      if (!drag) return;
+      drag = null;
+      this.canvas.classList.remove('is-dragging');
+      try {
+        this.canvas.releasePointerCapture(event.pointerId);
+      } catch (_) {}
+    };
+
+    this.canvas.addEventListener('pointerdown', onDown);
+    this.canvas.addEventListener('pointermove', onMove);
+    this.canvas.addEventListener('pointerup', onUp);
+    this.canvas.addEventListener('pointercancel', onUp);
   }
 
   /* ---- config helpers ---- */
@@ -156,6 +337,7 @@ class ProductCustomizer extends HTMLElement {
     if (this.side === side) return;
     this.side = side;
     this.updateTabs();
+    this.syncControls();
     this.renderActiveSide();
     this.dispatchEvent(new CustomEvent('customizer:sidechange', { bubbles: true, detail: { side } }));
   }
@@ -263,6 +445,12 @@ class ProductCustomizer extends HTMLElement {
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => this.render());
     }
+  }
+
+  /** Ensure a specific font face is loaded before drawing with it. */
+  ensureFont(font) {
+    if (!font || !document.fonts || !document.fonts.load) return Promise.resolve();
+    return document.fonts.load(`64px "${font}"`).catch(() => {});
   }
 
   /* ---- image loading (CORS-safe so Phase 6 canvas export is not tainted) ---- */
