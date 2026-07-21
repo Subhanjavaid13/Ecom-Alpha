@@ -16,6 +16,36 @@
   display: block;
 }
 
+.product-customizer__tabs {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: center;
+  margin-bottom: 1.2rem;
+}
+
+.product-customizer__tab {
+  padding: 0.7rem 1.8rem;
+  border: 0.1rem solid rgba(var(--color-foreground), 0.25);
+  border-radius: 3rem;
+  background: transparent;
+  color: rgb(var(--color-foreground));
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--duration-short, 0.1s) ease, color var(--duration-short, 0.1s) ease;
+}
+
+.product-customizer__tab.is-active {
+  background: rgb(var(--color-foreground));
+  color: rgb(var(--color-background));
+  border-color: rgb(var(--color-foreground));
+}
+
+.product-customizer__tab:focus-visible {
+  outline: 0.2rem solid rgb(var(--color-foreground));
+  outline-offset: 0.2rem;
+}
+
 .product-customizer__preview {
   position: relative;
   width: 100%;

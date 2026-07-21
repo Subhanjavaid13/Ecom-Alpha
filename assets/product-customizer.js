@@ -2,14 +2,16 @@
  * Front/Back shirt customizer - see md/PRD-shirt-customizer.md.
  *
  * Phase 1: scaffold + config handoff.
- * Phase 2: native variant swatch/size is handled by Dawn's variant_picker block;
- *          here we subscribe to Dawn's variant-change event and swap the preview
- *          base image, drawing it on the canvas (PRD 8.6).
+ * Phase 2: variant-change hook + base-image draw (PRD 8.6).
+ * Phase 3: front/back tabs, per-side state (PRD 8.4), and the base+text canvas
+ *          render (PRD 8.5) - print-area guide, drag-clamp helper, overflow
+ *          auto-scale, and font loading with a redraw on document.fonts.ready.
  *
- * Front/back tabs + per-side text state, text controls, drag-to-place, property-input
- * binding and mockup export/upload are added in later phases. The canvas is treated
- * as the base-image area: normalized print-area/text coordinates (0..1) map directly
- * to canvas pixels, and the preview box adopts the image's aspect ratio.
+ * Text/font/color/size controls and drag-to-place are Phase 4; they drive the
+ * per-side state through updateSide()/setSide() and call render(). The canvas is
+ * the base-image area: normalized print-area/text coords (0..1) map to canvas px,
+ * and text size is px-per-1000px-of-height so it stays stable across screen sizes
+ * and the high-res Phase 6 export.
  */
 class ProductCustomizer extends HTMLElement {
   constructor() {
@@ -28,10 +30,14 @@ class ProductCustomizer extends HTMLElement {
 
     this.canvas = this.querySelector('[data-customizer-canvas]');
     this.preview = this.querySelector('[data-customizer-preview]');
+    this.tabsEl = this.querySelector('[data-customizer-tabs]');
     this.panel = this.querySelector('[data-customizer-panel]');
     this.productFormId = this.dataset.productFormId;
 
+    this.initState();
     this.initCanvas();
+    this.buildTabs();
+    this.loadFonts();
     this.setActiveBase(this.config.selectedVariantId);
     this.subscribeToVariantChange();
 
@@ -57,19 +63,101 @@ class ProductCustomizer extends HTMLElement {
     }
   }
 
+  /* ---- per-side state ---- */
+
+  initState() {
+    const defaultFont = (this.config.fonts && this.config.fonts[0]) || 'Anton';
+    this.printAreaFront = this.config.printAreaFront || { x: 0.3, y: 0.32, w: 0.4, h: 0.34 };
+    this.printAreaBack = this.config.printAreaBack || { x: 0.28, y: 0.28, w: 0.44, h: 0.4 };
+
+    const makeSide = (pa) => ({
+      mode: 'custom', // 'custom' | 'preset'
+      text: '',
+      preset: '',
+      font: defaultFont,
+      color: '#22242A',
+      size: 54, // px per 1000px of canvas height
+      x: pa.x + pa.w / 2,
+      y: pa.y + pa.h / 2,
+    });
+
+    this.state = { front: makeSide(this.printAreaFront), back: makeSide(this.printAreaBack) };
+  }
+
+  printAreaFor(side) {
+    return side === 'back' ? this.printAreaBack : this.printAreaFront;
+  }
+
+  /** Phase 4 control entry point: merge a patch into the active side and redraw. */
+  updateSide(patch) {
+    Object.assign(this.state[this.side], patch);
+    this.render();
+  }
+
+  /** Clamp a normalized point into the active side's print area (used by Phase 4 drag). */
+  clampToPrintArea(side, x, y) {
+    const pa = this.printAreaFor(side);
+    return {
+      x: Math.min(Math.max(x, pa.x), pa.x + pa.w),
+      y: Math.min(Math.max(y, pa.y), pa.y + pa.h),
+    };
+  }
+
   /* ---- config helpers ---- */
 
-  /**
-   * Resolve the front/back base image URLs for a variant id, with graceful
-   * fallback to the product image when a variant/side has no dedicated base.
-   * Returns { front: string|null, back: string|null }.
-   */
   baseImagesFor(variantId) {
     const cfg = this.config;
     const entry = cfg && cfg.variants ? cfg.variants[String(variantId)] : null;
     const front = (entry && entry.front) || cfg.productImage || null;
     const back = (entry && entry.back) || null;
     return { front, back };
+  }
+
+  /* ---- front/back tabs ---- */
+
+  buildTabs() {
+    if (!this.tabsEl) return;
+    this.tabButtons = {};
+    ['front', 'back'].forEach((side) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'product-customizer__tab';
+      btn.dataset.side = side;
+      btn.setAttribute('role', 'tab');
+      btn.textContent = side === 'front' ? 'Front' : 'Back';
+      btn.addEventListener('click', () => this.setSide(side));
+      this.tabsEl.appendChild(btn);
+      this.tabButtons[side] = btn;
+    });
+    this.updateTabs();
+  }
+
+  /** Re-evaluate back-tab availability (per variant) and reflect the active side. */
+  updateTabs() {
+    if (!this.tabButtons) return;
+    const hasBack = !!(this.config.enableBack && this.baseUrls && this.baseUrls.back);
+
+    // Edge case: on the back tab but the new variant has no back image -> fall back.
+    if (!hasBack && this.side === 'back') this.side = 'front';
+
+    this.tabButtons.back.hidden = !hasBack;
+    Object.entries(this.tabButtons).forEach(([side, btn]) => {
+      const active = side === this.side;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+
+    // With no back option there is only one side - hide the whole tab bar.
+    if (this.tabsEl) this.tabsEl.hidden = !hasBack;
+  }
+
+  setSide(side) {
+    if (side === 'back' && !(this.config.enableBack && this.baseUrls && this.baseUrls.back)) return;
+    if (this.side === side) return;
+    this.side = side;
+    this.updateTabs();
+    this.renderActiveSide();
+    this.dispatchEvent(new CustomEvent('customizer:sidechange', { bubbles: true, detail: { side } }));
   }
 
   /* ---- canvas ---- */
@@ -95,7 +183,6 @@ class ProductCustomizer extends HTMLElement {
     this.render();
   }
 
-  /** Make the preview box match the base image's aspect ratio (no distortion). */
   applyAspect(img) {
     if (!img || !img.naturalWidth || !img.naturalHeight) return;
     const ratio = `${img.naturalWidth} / ${img.naturalHeight}`;
@@ -105,17 +192,77 @@ class ProductCustomizer extends HTMLElement {
     this.resizeCanvas();
   }
 
-  render() {
-    const ctx = this.ctx;
-    if (!ctx || !this.viewW || !this.viewH) return;
-    ctx.clearRect(0, 0, this.viewW, this.viewH);
-    if (this.currentImage) {
-      ctx.drawImage(this.currentImage, 0, 0, this.viewW, this.viewH);
+  /** Draw base + (guide) + text for a side onto any context. Reused by Phase 6 export. */
+  composite(ctx, w, h, img, side, options = {}) {
+    ctx.clearRect(0, 0, w, h);
+    if (img) {
+      ctx.drawImage(img, 0, 0, w, h);
     } else {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
-      ctx.fillRect(0, 0, this.viewW, this.viewH);
+      ctx.fillRect(0, 0, w, h);
     }
-    // Later phases draw the text layer for the active side here.
+    if (options.guide) this.drawGuide(ctx, w, h, side);
+    this.drawText(ctx, this.state[side], w, h, side);
+  }
+
+  render() {
+    if (!this.ctx || !this.viewW || !this.viewH) return;
+    this.composite(this.ctx, this.viewW, this.viewH, this.currentImage, this.side, { guide: true });
+  }
+
+  drawGuide(ctx, w, h, side) {
+    const pa = this.printAreaFor(side);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(pa.x * w, pa.y * h, pa.w * w, pa.h * h);
+    ctx.restore();
+  }
+
+  drawText(ctx, side_state, w, h, side) {
+    const text = (side_state.mode === 'preset' ? side_state.preset : side_state.text).trim();
+    if (!text) return; // empty text -> no text layer (and no property/mockup later)
+
+    const pa = this.printAreaFor(side);
+    const baseFontPx = (side_state.size * h) / 1000;
+
+    ctx.save();
+    ctx.fillStyle = side_state.color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `${baseFontPx}px "${side_state.font}", sans-serif`;
+
+    // Overflow edge case: auto-scale down to the print-area width.
+    const maxWidth = pa.w * w;
+    const measured = ctx.measureText(text).width;
+    let fontPx = baseFontPx;
+    if (measured > maxWidth && measured > 0) {
+      fontPx = baseFontPx * (maxWidth / measured);
+      ctx.font = `${fontPx}px "${side_state.font}", sans-serif`;
+    }
+
+    ctx.fillText(text, side_state.x * w, side_state.y * h);
+    ctx.restore();
+  }
+
+  /* ---- fonts (PRD 8.5: load fonts, redraw on document.fonts.ready) ---- */
+
+  loadFonts() {
+    const fonts = (this.config.fonts || []).filter(Boolean);
+    if (fonts.length && !document.querySelector('link[data-customizer-fonts]')) {
+      const families = fonts
+        .map((f) => `family=${encodeURIComponent(f).replace(/%20/g, '+')}`)
+        .join('&');
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?${families}&display=swap`;
+      link.setAttribute('data-customizer-fonts', '');
+      document.head.appendChild(link);
+    }
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => this.render());
+    }
   }
 
   /* ---- image loading (CORS-safe so Phase 6 canvas export is not tainted) ---- */
@@ -136,16 +283,16 @@ class ProductCustomizer extends HTMLElement {
 
   /* ---- variant hook ---- */
 
-  /** Point the customizer at a variant's base images, warm the back cache, redraw. */
   setActiveBase(variantId) {
     this.currentVariantId = String(variantId);
     const { front, back } = this.baseImagesFor(variantId);
     this.baseUrls = { front, back };
-    if (back) this.loadImage(back).catch(() => {}); // preload for the back tab (Phase 3)
+    if (back) this.loadImage(back).catch(() => {}); // warm cache for the back tab
+    this.updateTabs(); // back availability can change per variant
     return this.renderActiveSide();
   }
 
-  /** Load + draw the base image for the currently active side, ignoring stale loads. */
+  /** Load + draw the base image for the active side, ignoring superseded loads. */
   async renderActiveSide() {
     const url = this.baseUrls ? this.baseUrls[this.side] : null;
     const token = ++this.renderToken;
