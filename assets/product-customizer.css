@@ -16,6 +16,15 @@
   display: block;
 }
 
+.product-customizer.is-exporting {
+  cursor: progress;
+}
+
+.product-customizer.is-exporting .product-customizer__controls {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .product-customizer__tabs {
   display: flex;
   gap: 0.8rem;

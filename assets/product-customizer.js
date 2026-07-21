@@ -44,6 +44,7 @@ class ProductCustomizer extends HTMLElement {
     this.setActiveBase(this.config.selectedVariantId);
     this.subscribeToVariantChange();
     this.syncHiddenInputs();
+    this.initSubmitInterception();
 
     this.setAttribute('data-ready', 'true');
     this.dispatchEvent(
@@ -54,6 +55,7 @@ class ProductCustomizer extends HTMLElement {
   disconnectedCallback() {
     if (this.variantUnsubscribe) this.variantUnsubscribe();
     if (this.resizeObserver) this.resizeObserver.disconnect();
+    if (this.boundSubmit) document.removeEventListener('submit', this.boundSubmit, true);
   }
 
   readConfig() {
@@ -295,6 +297,152 @@ class ProductCustomizer extends HTMLElement {
         input.disabled = !active;
       });
     });
+  }
+
+  /* ---- mockup export + upload (PRD 8.7) ---- */
+
+  initSubmitInterception() {
+    this.form = document.getElementById(this.productFormId);
+    this.uploadUrl = (this.dataset.uploadUrl || '').trim();
+    if (!this.form) return;
+    this.boundSubmit = (event) => this.onCapturedSubmit(event);
+    // Capture phase on an ancestor so this runs before product-form.js's form listener.
+    document.addEventListener('submit', this.boundSubmit, true);
+  }
+
+  onCapturedSubmit(event) {
+    if (event.target !== this.form) return; // not our product form
+    if (this.bypassSubmit) {
+      this.bypassSubmit = false; // resumed submit -> let it proceed to product-form.js
+      return;
+    }
+
+    const hasText = ['front', 'back'].some((side) => this.sideText(this.state[side]).length > 0);
+    // MVP / text-only: no endpoint or nothing to capture -> normal submit (props already mirrored).
+    if (!hasText || !this.uploadUrl) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (this.working) return; // ignore re-entrant clicks while exporting
+
+    this.working = true;
+    this.setSubmitting(true);
+    this.exportAndUpload()
+      .catch((error) => console.warn('[product-customizer] mockup export/upload error', error))
+      .finally(() => {
+        this.working = false;
+        this.setSubmitting(false);
+        this.bypassSubmit = true;
+        this.resumeSubmit();
+      });
+  }
+
+  async exportAndUpload() {
+    const designId = this.generateDesignId();
+    const sides = ['front', 'back'].filter((side) => this.sideText(this.state[side]).length > 0);
+
+    // Reset mockup inputs; regenerate per submit (duplicate add-to-cart edge case).
+    [this.inputs.frontMockup, this.inputs.backMockup].forEach((input) => {
+      if (input) {
+        input.value = '';
+        input.disabled = true;
+      }
+    });
+
+    let uploaded = false;
+    for (const side of sides) {
+      try {
+        const dataUrl = await this.exportMockup(side);
+        if (!dataUrl) continue;
+        const url = await this.uploadMockup(dataUrl, side, designId);
+        const input = side === 'front' ? this.inputs.frontMockup : this.inputs.backMockup;
+        if (input && url) {
+          input.value = url;
+          input.disabled = false;
+          uploaded = true;
+        }
+      } catch (error) {
+        // Never block the sale: fall back to text-only for this side.
+        console.warn('[product-customizer] mockup failed for', side, error);
+      }
+    }
+
+    if (uploaded && this.inputs.designId) {
+      this.inputs.designId.value = designId;
+      this.inputs.designId.disabled = false;
+    }
+  }
+
+  /** Render a side's base + text to an offscreen canvas at native resolution -> PNG data URL. */
+  async exportMockup(side) {
+    const url = this.baseUrls ? this.baseUrls[side] : null;
+    let img = null;
+    if (url) {
+      try {
+        img = await this.loadImage(url);
+      } catch (_) {
+        img = null;
+      }
+    }
+
+    const maxW = 1600;
+    const w = img && img.naturalWidth ? Math.min(img.naturalWidth, maxW) : 1000;
+    const h = img && img.naturalWidth ? Math.round((w * img.naturalHeight) / img.naturalWidth) : 1000;
+
+    const off = document.createElement('canvas');
+    off.width = w;
+    off.height = h;
+    const ctx = off.getContext('2d');
+    this.composite(ctx, w, h, img, side, { guide: false }); // base + text, no guide overlay
+
+    try {
+      return off.toDataURL('image/png');
+    } catch (error) {
+      // A non-CORS base image taints the canvas; skip the mockup, keep text properties.
+      console.warn('[product-customizer] canvas export blocked (tainted image)', error);
+      return null;
+    }
+  }
+
+  async uploadMockup(dataUrl, side, designId) {
+    const response = await fetch(this.uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image: dataUrl,
+        side,
+        designId,
+        productId: this.dataset.productId || null,
+        variantId: this.currentVariantId || null,
+      }),
+    });
+    if (!response.ok) throw new Error(`upload HTTP ${response.status}`);
+    const data = await response.json().catch(() => ({}));
+    const url = data.url || data.src || data.location;
+    if (!url) throw new Error('upload response missing url');
+    return url;
+  }
+
+  generateDesignId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return `design-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  resumeSubmit() {
+    const button = this.form.querySelector('[type="submit"]');
+    if (typeof this.form.requestSubmit === 'function') {
+      this.form.requestSubmit(button || undefined);
+    } else if (button) {
+      button.click();
+    } else {
+      this.form.submit();
+    }
+  }
+
+  setSubmitting(state) {
+    this.classList.toggle('is-exporting', !!state);
   }
 
   /* ---- drag-to-place (pointer + touch; clamped to the print area) ---- */

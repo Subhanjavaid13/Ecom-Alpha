@@ -943,6 +943,12 @@
         {
           "type": "paragraph",
           "content": "Print areas, fonts, presets, max characters, back toggle and per-color base images are read from product/variant metafields (see the shirt-customizer PRD). Configure those in the product admin - nothing here is set from theme settings."
+        },
+        {
+          "type": "text",
+          "id": "mockup_upload_url",
+          "label": "Mockup upload endpoint (optional)",
+          "info": "POST endpoint (app proxy or storage bucket) that accepts JSON { image, side, designId, productId, variantId } and returns { url }. Leave blank to submit text-only properties; ops recreates the artwork from text/font/color/placement."
         }
       ]
     },
