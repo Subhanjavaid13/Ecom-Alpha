@@ -1,0 +1,122 @@
+{% comment %}
+  Front/Back shirt customizer - see md/PRD-shirt-customizer.md.
+
+  Rendered as the 'customizer' block from sections/main-product.liquid so that its
+  property inputs bind to the product <form> via form="{{ product_form_id }}"
+  (product-form-{{ section.id }}). This keeps add-to-cart working through Dawn's
+  existing AJAX product-form.js with no fork.
+
+  Accepts:
+  - product:          {Object} product object.
+  - block:            {Object} the 'customizer' block.
+  - product_form_id:  {String} id of the product <form> (product-form-{{ section.id }}).
+  - section_id:       {String} the main-product section id.
+
+  Config is read from the metaobject product.metafields.custom.customizer, falling
+  back to flat product metafields (custom.print_areas / fonts / preset_texts /
+  max_chars / enable_back). Per-color base images come from variant metafields
+  custom.mockup_front / custom.mockup_back, falling back to the variant image.
+  Nothing here is hardcoded except last-resort defaults for a product that has not
+  been configured yet (mirrors the defaults in PRD 8.2).
+{% endcomment %}
+
+{%- liquid
+  assign cfg = product.metafields.custom.customizer.value
+
+  # Print areas (normalized rects). Metaobject first, then flat metafield.
+  assign print_area_front = cfg.print_area_front
+  if print_area_front == blank
+    assign print_area_front = product.metafields.custom.print_areas.value.front
+  endif
+
+  assign print_area_back = cfg.print_area_back
+  if print_area_back == blank
+    assign print_area_back = product.metafields.custom.print_areas.value.back
+  endif
+
+  # Allowed fonts and preset strings.
+  assign fonts = cfg.fonts
+  if fonts == blank
+    assign fonts = product.metafields.custom.fonts.value
+  endif
+
+  assign presets = cfg.preset_texts
+  if presets == blank
+    assign presets = product.metafields.custom.preset_texts.value
+  endif
+
+  # Max characters per side.
+  assign max_chars = cfg.max_chars
+  if max_chars == blank
+    assign max_chars = product.metafields.custom.max_chars.value
+  endif
+  if max_chars == blank
+    assign max_chars = 24
+  endif
+
+  # Whether the back side is customizable.
+  assign enable_back = cfg.enable_back
+  if enable_back == blank
+    assign enable_back = product.metafields.custom.enable_back.value
+  endif
+  if enable_back == blank
+    assign enable_back = true
+  endif
+-%}
+
+{{ 'product-customizer.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'product-customizer.js' | asset_url }}" defer="defer"></script>
+
+<div class="product-customizer" {{ block.shopify_attributes }}>
+  {%- if block.settings.heading != blank -%}
+    <h2 class="product-customizer__heading h4">{{ block.settings.heading | escape }}</h2>
+  {%- endif -%}
+
+  <product-customizer
+    class="product-customizer__app"
+    data-section-id="{{ section_id }}"
+    data-product-form-id="{{ product_form_id }}"
+  >
+    <script type="application/json" data-customizer-config>
+      {
+        "printAreaFront": {% if print_area_front != blank %}{{ print_area_front | json }}{% else %}{"x":0.30,"y":0.32,"w":0.40,"h":0.34}{% endif %},
+        "printAreaBack": {% if print_area_back != blank %}{{ print_area_back | json }}{% else %}{"x":0.28,"y":0.28,"w":0.44,"h":0.40}{% endif %},
+        "fonts": {% if fonts != blank %}{{ fonts | json }}{% else %}["Anton","Oswald","Roboto Slab","Pacifico","Space Mono"]{% endif %},
+        "presets": {% if presets != blank %}{{ presets | json }}{% else %}[]{% endif %},
+        "maxChars": {{ max_chars | json }},
+        "enableBack": {{ enable_back | json }},
+        "selectedVariantId": {{ product.selected_or_first_available_variant.id | json }},
+        "productImage": {% if product.featured_image != blank %}{{ product.featured_image | image_url: width: 1400 | json }}{% else %}null{% endif %},
+        "variants": {
+          {%- for variant in product.variants -%}
+            {%- liquid
+              assign front_url = ''
+              if variant.metafields.custom.mockup_front.value != blank
+                assign front_url = variant.metafields.custom.mockup_front.value | image_url: width: 1400
+              elsif variant.featured_image != blank
+                assign front_url = variant.featured_image | image_url: width: 1400
+              endif
+
+              assign back_url = ''
+              if variant.metafields.custom.mockup_back.value != blank
+                assign back_url = variant.metafields.custom.mockup_back.value | image_url: width: 1400
+              endif
+            -%}
+            "{{ variant.id }}": {
+              "title": {{ variant.title | json }},
+              "front": {{ front_url | json }},
+              "back": {{ back_url | json }}
+            }{%- unless forloop.last -%},{%- endunless -%}
+          {%- endfor -%}
+        }
+      }
+    </script>
+
+    <div class="product-customizer__preview" data-customizer-preview>
+      <canvas class="product-customizer__canvas" data-customizer-canvas></canvas>
+    </div>
+
+    {%- comment -%} Side tabs, text controls, drag and property inputs are added in later phases. {%- endcomment -%}
+    <div class="product-customizer__panel" data-customizer-panel></div>
+  </product-customizer>
+</div>

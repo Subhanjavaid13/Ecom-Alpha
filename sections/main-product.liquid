@@ -491,6 +491,13 @@
                     block: block,
                     product_form_id: product_form_id
                   %}
+                {%- when 'customizer' -%}
+                  {%- render 'product-customizer',
+                    product: product,
+                    block: block,
+                    product_form_id: product_form_id,
+                    section_id: section.id
+                  -%}
                 {%- when 'buy_buttons' -%}
                   {%- render 'buy-buttons',
                     block: block,
@@ -919,6 +926,23 @@
             }
           ],
           "default": "circle"
+        }
+      ]
+    },
+    {
+      "type": "customizer",
+      "name": "Shirt customizer",
+      "limit": 1,
+      "settings": [
+        {
+          "type": "text",
+          "id": "heading",
+          "label": "Heading",
+          "default": "Personalize your design"
+        },
+        {
+          "type": "paragraph",
+          "content": "Print areas, fonts, presets, max characters, back toggle and per-color base images are read from product/variant metafields (see the shirt-customizer PRD). Configure those in the product admin - nothing here is set from theme settings."
         }
       ]
     },

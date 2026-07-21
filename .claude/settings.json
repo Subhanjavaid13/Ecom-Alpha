@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(magick -background none tshirt-white-front.svg tshirt-white-front.png)",
+      "Bash(magick -background none tshirt-white-back.svg tshirt-white-back.png)",
+      "Bash(magick identify *)",
+      "Bash(command -v magick)",
+      "Bash(echo \"magick: $\\(command -v magick || echo MISSING\\)\")",
+      "Bash(command -v convert)",
+      "Bash(echo \"convert: $\\(command -v convert || echo MISSING\\)\")",
+      "Bash(command -v python)",
+      "Bash(python -c \"import PIL; print\\('Pillow:', PIL.__version__\\)\")",
+      "Bash(python -m pip install --quiet Pillow)",
+      "Bash(python -c \"import PIL; print\\('Pillow ready:', PIL.__version__\\)\")",
+      "Bash(python -c \"import PIL; print\\('Pillow', PIL.__version__\\)\")",
+      "Bash(python img/_make_tshirts.py)",
+      "Bash(python img/_make_sweatshirts.py)"
+    ]
+  }
+}

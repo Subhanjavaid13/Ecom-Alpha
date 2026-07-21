@@ -1,0 +1,40 @@
+/*
+ * Front/Back shirt customizer - see md/PRD-shirt-customizer.md.
+ * Phase 1: scaffold layout for the preview + controls panel.
+ * Text controls, side tabs and drag styles are added in later phases.
+ */
+
+.product-customizer {
+  margin: 2rem 0;
+}
+
+.product-customizer__heading {
+  margin: 0 0 1rem;
+}
+
+.product-customizer__app {
+  display: block;
+}
+
+.product-customizer__preview {
+  position: relative;
+  width: 100%;
+  max-width: 44rem;
+  margin-inline: auto;
+  aspect-ratio: var(--customizer-aspect, 1 / 1);
+  background: rgba(var(--color-foreground), 0.04);
+  border: 0.1rem solid rgba(var(--color-foreground), 0.08);
+  border-radius: var(--media-radius, 0.4rem);
+  overflow: hidden;
+}
+
+.product-customizer__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none; /* lets later phases own pointer drag without page scroll */
+}
+
+.product-customizer__panel {
+  margin-top: 1.5rem;
+}
