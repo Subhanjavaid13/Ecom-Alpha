@@ -20,7 +20,9 @@
       "Bash(node -e ' *)",
       "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('templates/product.json','utf8'\\)\\); console.log\\('valid JSON'\\);\")",
       "Bash(node -e \"const j=JSON.parse\\(require\\('fs'\\).readFileSync\\('templates/product.json','utf8'\\)\\); console.log\\(j.sections.main.block_order.join\\(', '\\)\\); console.log\\('gallery_layout:', j.sections.main.settings.gallery_layout\\); console.log\\('customizer block:', JSON.stringify\\(j.sections.main.blocks.customizer\\)\\);\")",
-      "Bash(shopify theme *)"
+      "Bash(shopify theme *)",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)"
     ]
   }
 }
