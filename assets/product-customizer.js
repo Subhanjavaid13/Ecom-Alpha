@@ -31,9 +31,14 @@ class ProductCustomizer extends HTMLElement {
     this.canvas = this.querySelector('[data-customizer-canvas]');
     this.preview = this.querySelector('[data-customizer-preview]');
     this.tabsEl = this.querySelector('[data-customizer-tabs]');
-    this.panel = this.querySelector('[data-customizer-panel]');
     this.liveRegion = this.querySelector('[data-customizer-status]');
     this.productFormId = this.dataset.productFormId;
+
+    // Controls + hidden inputs live in the right info column (Printify layout).
+    // In the single-column fallback they are inside this element.
+    this.controlsRoot =
+      (this.dataset.controls && document.getElementById(this.dataset.controls)) || this;
+    this.panel = this.controlsRoot.querySelector('[data-customizer-panel]');
 
     this.initState();
     this.cacheInputs();
@@ -254,7 +259,8 @@ class ProductCustomizer extends HTMLElement {
   /* ---- line item property inputs (PRD 7 / 8.3) ---- */
 
   cacheInputs() {
-    const q = (key) => this.querySelector(`[data-prop="${key}"]`);
+    const root = this.controlsRoot || this;
+    const q = (key) => root.querySelector(`[data-prop="${key}"]`);
     this.inputs = {
       front: { text: q('front-text'), font: q('front-font'), color: q('front-color'), place: q('front-place') },
       back: { text: q('back-text'), font: q('back-font'), color: q('back-color'), place: q('back-place') },
@@ -792,4 +798,6 @@ class ProductCustomizer extends HTMLElement {
   }
 }
 
-customElements.define('product-customizer', ProductCustomizer);
+if (!customElements.get('product-customizer')) {
+  customElements.define('product-customizer', ProductCustomizer);
+}

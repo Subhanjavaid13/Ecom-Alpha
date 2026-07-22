@@ -1,83 +1,75 @@
 {% comment %}
   Front/Back shirt customizer - see md/PRD-shirt-customizer.md.
 
-  Rendered as the 'customizer' block from sections/main-product.liquid so that its
-  property inputs bind to the product <form> via form="{{ product_form_id }}"
-  (product-form-{{ section.id }}). This keeps add-to-cart working through Dawn's
-  existing AJAX product-form.js with no fork.
+  Printify-style split layout, rendered from sections/main-product.liquid:
+  - part: 'preview'  -> the <product-customizer> element (config + canvas + tabs +
+                        status + photo strip). Rendered in the LEFT media column.
+  - part: 'controls' -> the controls panel + hidden property inputs. Rendered in the
+                        RIGHT info column by the 'customizer' block.
+  - part: 'all'      -> both together (fallback / single-column).
 
-  Accepts:
-  - product:          {Object} product object.
-  - block:            {Object} the 'customizer' block.
-  - product_form_id:  {String} id of the product <form> (product-form-{{ section.id }}).
-  - section_id:       {String} the main-product section id.
+  The preview element owns all JS; it finds its controls in the right column by id
+  (data-controls). Hidden inputs bind to the product form via form="{{ product_form_id }}"
+  so Dawn's AJAX product-form.js serializes them with no fork. Config is read from the
+  metaobject custom.customizer, falling back to flat product metafields, then defaults.
 
-  Config is read from the metaobject product.metafields.custom.customizer, falling
-  back to flat product metafields (custom.print_areas / fonts / preset_texts /
-  max_chars / enable_back). Per-color base images come from variant metafields
-  custom.mockup_front / custom.mockup_back, falling back to the variant image.
-  Nothing here is hardcoded except last-resort defaults for a product that has not
-  been configured yet (mirrors the defaults in PRD 8.2).
+  Accepts: product, block, product_form_id, section_id, part.
 {% endcomment %}
 
-{%- liquid
-  assign cfg = product.metafields.custom.customizer.value
+{%- assign part = part | default: 'all' -%}
+{%- assign controls_id = 'customizer-controls-' | append: section_id -%}
 
-  # Print areas (normalized rects). Metaobject first, then flat metafield.
-  assign print_area_front = cfg.print_area_front
-  if print_area_front == blank
-    assign print_area_front = product.metafields.custom.print_areas.value.front
-  endif
+{%- if part == 'preview' or part == 'all' -%}
+  {{ 'product-customizer.css' | asset_url | stylesheet_tag }}
+  <script src="{{ 'product-customizer.js' | asset_url }}" defer="defer"></script>
 
-  assign print_area_back = cfg.print_area_back
-  if print_area_back == blank
-    assign print_area_back = product.metafields.custom.print_areas.value.back
-  endif
+  {%- liquid
+    assign cfg = product.metafields.custom.customizer.value
 
-  # Allowed fonts and preset strings.
-  assign fonts = cfg.fonts
-  if fonts == blank
-    assign fonts = product.metafields.custom.fonts.value
-  endif
+    assign print_area_front = cfg.print_area_front
+    if print_area_front == blank
+      assign print_area_front = product.metafields.custom.print_areas.value.front
+    endif
 
-  assign presets = cfg.preset_texts
-  if presets == blank
-    assign presets = product.metafields.custom.preset_texts.value
-  endif
+    assign print_area_back = cfg.print_area_back
+    if print_area_back == blank
+      assign print_area_back = product.metafields.custom.print_areas.value.back
+    endif
 
-  # Max characters per side.
-  assign max_chars = cfg.max_chars
-  if max_chars == blank
-    assign max_chars = product.metafields.custom.max_chars.value
-  endif
-  if max_chars == blank
-    assign max_chars = 24
-  endif
+    assign fonts = cfg.fonts
+    if fonts == blank
+      assign fonts = product.metafields.custom.fonts.value
+    endif
 
-  # Whether the back side is customizable.
-  assign enable_back = cfg.enable_back
-  if enable_back == blank
-    assign enable_back = product.metafields.custom.enable_back.value
-  endif
-  if enable_back == blank
-    assign enable_back = true
-  endif
--%}
+    assign presets = cfg.preset_texts
+    if presets == blank
+      assign presets = product.metafields.custom.preset_texts.value
+    endif
 
-{{ 'product-customizer.css' | asset_url | stylesheet_tag }}
-<script src="{{ 'product-customizer.js' | asset_url }}" defer="defer"></script>
+    assign max_chars = cfg.max_chars
+    if max_chars == blank
+      assign max_chars = product.metafields.custom.max_chars.value
+    endif
+    if max_chars == blank
+      assign max_chars = 24
+    endif
 
-<div class="product-customizer" {{ block.shopify_attributes }}>
-  {%- if block.settings.heading != blank -%}
-    <h2 class="product-customizer__heading h4">{{ block.settings.heading | escape }}</h2>
-  {%- endif -%}
+    assign enable_back = cfg.enable_back
+    if enable_back == blank
+      assign enable_back = product.metafields.custom.enable_back.value
+    endif
+    if enable_back == blank
+      assign enable_back = true
+    endif
+  -%}
 
   <product-customizer
-    class="product-customizer__app"
+    class="product-customizer product-customizer--preview"
     data-section-id="{{ section_id }}"
     data-product-form-id="{{ product_form_id }}"
     data-product-id="{{ product.id }}"
     data-upload-url="{{ block.settings.mockup_upload_url }}"
+    data-controls="{{ controls_id }}"
   >
     <script type="application/json" data-customizer-config>
       {
@@ -128,14 +120,35 @@
 
     <span class="visually-hidden" data-customizer-status role="status" aria-live="polite"></span>
 
+    {%- if product.images.size > 0 -%}
+      <div class="product-customizer__strip" aria-hidden="true">
+        {%- for image in product.images limit: 6 -%}
+          <img
+            class="product-customizer__thumb"
+            src="{{ image | image_url: width: 200 }}"
+            alt=""
+            width="72"
+            height="72"
+            loading="lazy"
+          >
+        {%- endfor -%}
+      </div>
+    {%- endif -%}
+  </product-customizer>
+{%- endif -%}
+
+{%- if part == 'controls' or part == 'all' -%}
+  <div id="{{ controls_id }}" class="product-customizer product-customizer--controls" {{ block.shopify_attributes }}>
+    {%- if block.settings.heading != blank -%}
+      <h2 class="product-customizer__heading h4">{{ block.settings.heading | escape }}</h2>
+    {%- endif -%}
+
     <div class="product-customizer__panel" data-customizer-panel></div>
 
     {%- comment -%}
-      Line item properties (PRD 7). Bound to the product form via the form attribute
-      so Dawn's AJAX product-form.js serializes them with no fork. JS keeps each side's
-      inputs enabled+populated only when that side has text; empty sides stay disabled
-      so they are stripped from the order. Underscore-prefixed props (_Front Mockup,
-      _Back Mockup, _Design ID) are hidden from cart/checkout and filled in Phase 6.
+      Line item properties (PRD 7). Bound to the product form via the form attribute.
+      JS enables+populates each side only when it has text; empty sides stay disabled
+      and are stripped from the order. Underscore props are filled in the mockup phase.
     {%- endcomment -%}
     <div class="product-customizer__properties">
       <input type="hidden" name="properties[Front Text]"      data-prop="front-text"   form="{{ product_form_id }}">
@@ -150,5 +163,5 @@
       <input type="hidden" name="properties[_Back Mockup]"    data-prop="back-mockup"  form="{{ product_form_id }}">
       <input type="hidden" name="properties[_Design ID]"      data-prop="design-id"    form="{{ product_form_id }}">
     </div>
-  </product-customizer>
-</div>
+  </div>
+{%- endif -%}

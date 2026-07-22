@@ -73,11 +73,23 @@
   {%- endif -%}
 
   {% assign variant_images = product.images | where: 'attached_to_variant?', true | map: 'src' %}
+  {%- assign product_form_id = 'product-form-' | append: section.id -%}
+  {%- assign customizer_block = section.blocks | where: 'type', 'customizer' | first -%}
   <product-component view-event-payload="{{ product | standard_event_data: 'view', context: 'page' | escape }}">
     <div class="page-width">
       <div class="product product--{{ section.settings.media_size }} product--{{ section.settings.media_position }} product--{{ section.settings.gallery_layout }} product--mobile-{{ section.settings.mobile_thumbnails }} grid grid--1-col {% if product.media.size > 0 %}grid--2-col-tablet{% else %}product--no-media{% endif %}">
         <div class="grid__item product__media-wrapper">
-          {% render 'product-media-gallery', variant_images: variant_images %}
+          {%- if customizer_block -%}
+            {% render 'product-customizer',
+              product: product,
+              block: customizer_block,
+              product_form_id: product_form_id,
+              section_id: section.id,
+              part: 'preview'
+            %}
+          {%- else -%}
+            {% render 'product-media-gallery', variant_images: variant_images %}
+          {%- endif -%}
         </div>
         <div class="product__info-wrapper grid__item{% if settings.page_width > 1400 and section.settings.media_size == "small" %} product__info-wrapper--extra-padding{% endif %}{% if settings.animations_reveal_on_scroll %} scroll-trigger animate--slide-in{% endif %}">
           <section
@@ -496,7 +508,8 @@
                     product: product,
                     block: block,
                     product_form_id: product_form_id,
-                    section_id: section.id
+                    section_id: section.id,
+                    part: 'controls'
                   -%}
                 {%- when 'buy_buttons' -%}
                   {%- render 'buy-buttons',

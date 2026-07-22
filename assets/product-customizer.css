@@ -5,7 +5,39 @@
  */
 
 .product-customizer {
+  display: block;
   margin: 2rem 0;
+}
+
+/* Printify layout: big live preview in the left media column. */
+.product-customizer--preview {
+  margin: 0 0 2rem;
+}
+
+@media screen and (min-width: 990px) {
+  .product-customizer--preview {
+    position: sticky;
+    top: 3rem;
+  }
+}
+
+.product-customizer--controls {
+  margin-top: 0;
+}
+
+.product-customizer__strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 1.2rem;
+}
+
+.product-customizer__thumb {
+  width: 7.2rem;
+  height: 7.2rem;
+  object-fit: cover;
+  border-radius: var(--media-radius, 0.4rem);
+  border: 0.1rem solid rgba(var(--color-foreground), 0.1);
 }
 
 .product-customizer__heading {
@@ -58,7 +90,7 @@
 .product-customizer__preview {
   position: relative;
   width: 100%;
-  max-width: 44rem;
+  max-width: 100%;
   margin-inline: auto;
   aspect-ratio: var(--customizer-aspect, 1 / 1);
   background: rgba(var(--color-foreground), 0.04);
