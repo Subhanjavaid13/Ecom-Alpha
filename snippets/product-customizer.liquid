@@ -102,6 +102,7 @@
         "enableBack": {{ enable_back | json }},
         "selectedVariantId": {{ product.selected_or_first_available_variant.id | json }},
         "productImage": {% if product.featured_image != blank %}{{ product.featured_image | image_url: width: 1400 | json }}{% else %}null{% endif %},
+        "colorOption": {% if product.options_with_values.size > 0 %}{{ product.options_with_values[0].name | json }}{% else %}null{% endif %},
         "variants": {
           {%- for variant in product.variants -%}
             {%- liquid
@@ -119,6 +120,7 @@
             -%}
             "{{ variant.id }}": {
               "title": {{ variant.title | json }},
+              "color": {{ variant.option1 | json }},
               "front": {{ front_url | json }},
               "back": {{ back_url | json }}
             }{%- unless forloop.last -%},{%- endunless -%}
@@ -141,20 +143,18 @@
 
     <span class="visually-hidden" data-customizer-status role="status" aria-live="polite"></span>
 
-    {%- if product.images.size > 0 -%}
-      <div class="product-customizer__strip" aria-hidden="true">
-        {%- for image in product.images limit: 6 -%}
-          <img
-            class="product-customizer__thumb"
-            src="{{ image | image_url: width: 200 }}"
-            alt=""
-            width="72"
-            height="72"
-            loading="lazy"
-          >
-        {%- endfor -%}
-      </div>
-    {%- endif -%}
+    {%- comment -%}
+      Interactive color/side thumbnail selector. Built by product-customizer.js from
+      the per-variant base images; clicking a thumbnail drives the variant picker
+      (color) and the front/back side. Hidden until JS populates it.
+    {%- endcomment -%}
+    <div
+      class="product-customizer__strip"
+      data-customizer-strip
+      role="group"
+      aria-label="Choose a color and side to preview"
+      hidden
+    ></div>
   </product-customizer>
 {%- endif -%}
 

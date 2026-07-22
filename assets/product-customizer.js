@@ -47,6 +47,7 @@ class ProductCustomizer extends HTMLElement {
     this.initKeyboard();
     this.buildTabs();
     this.buildControls();
+    this.buildStrip();
     this.loadFonts();
     this.setActiveBase(this.config.selectedVariantId);
     this.subscribeToVariantChange();
@@ -133,6 +134,7 @@ class ProductCustomizer extends HTMLElement {
     const defaultFont = this.fontList[0] || 'Anton';
     this.printAreaFront = this.normalizeRect(this.config.printAreaFront, { x: 0.3, y: 0.32, w: 0.4, h: 0.34 });
     this.printAreaBack = this.normalizeRect(this.config.printAreaBack, { x: 0.28, y: 0.28, w: 0.44, h: 0.4 });
+    this.colorOption = this.config.colorOption || null;
 
     const makeSide = (pa) => ({
       mode: 'custom', // 'custom' | 'preset'
@@ -210,8 +212,11 @@ class ProductCustomizer extends HTMLElement {
             <input class="pc-color" id="pc-color-${uid}" type="color" data-color value="#22242A">
           </div>
           <div class="pc-field pc-field--grow">
-            <label class="form__label" for="pc-size-${uid}">Size</label>
-            <input class="pc-range" id="pc-size-${uid}" type="range" min="20" max="120" step="1" data-size>
+            <div class="pc-labelrow">
+              <label class="form__label" for="pc-size-${uid}">Text size</label>
+              <output class="pc-range__value" for="pc-size-${uid}" data-size-value aria-hidden="true"></output>
+            </div>
+            <input class="pc-range" id="pc-size-${uid}" type="range" min="20" max="120" step="1" data-size aria-label="Text size">
           </div>
         </div>
       </div>`;
@@ -245,6 +250,7 @@ class ProductCustomizer extends HTMLElement {
       font: fontSel,
       color: this.panel.querySelector('[data-color]'),
       size: this.panel.querySelector('[data-size]'),
+      sizeValue: this.panel.querySelector('[data-size-value]'),
     };
 
     this.ctrl.text.addEventListener('input', () => {
@@ -260,7 +266,10 @@ class ProductCustomizer extends HTMLElement {
       this.ensureFont(font).then(() => this.render()); // redraw once the face is ready
     });
     this.ctrl.color.addEventListener('input', () => this.updateSide({ color: this.ctrl.color.value }));
-    this.ctrl.size.addEventListener('input', () => this.updateSide({ size: Number(this.ctrl.size.value) }));
+    this.ctrl.size.addEventListener('input', () => {
+      this.updateSide({ size: Number(this.ctrl.size.value) });
+      this.updateSizeValue();
+    });
     this.ctrl.modeBtns.forEach((btn) => btn.addEventListener('click', () => this.setMode(btn.dataset.mode)));
 
     this.syncControls();
@@ -297,6 +306,7 @@ class ProductCustomizer extends HTMLElement {
     this.ctrl.font.value = s.font;
     this.ctrl.color.value = s.color;
     this.ctrl.size.value = String(s.size);
+    this.updateSizeValue();
     this.updateCharCount();
   }
 
@@ -304,6 +314,121 @@ class ProductCustomizer extends HTMLElement {
     if (!this.ctrl || !this.ctrl.charcount) return;
     const max = this.maxChars || 24;
     this.ctrl.charcount.textContent = `${this.ctrl.text.value.length}/${max}`;
+  }
+
+  updateSizeValue() {
+    if (!this.ctrl || !this.ctrl.sizeValue) return;
+    this.ctrl.sizeValue.textContent = String(this.state[this.side].size);
+  }
+
+  /* ---- preview thumbnail strip (color + side selector) ---- */
+
+  /**
+   * Build an accessible thumbnail selector from the per-variant base images.
+   * One entry per color (front, plus back when a back image exists). Clicking a
+   * thumbnail drives Dawn's variant picker to that color (keeping size/price in
+   * sync) and switches the active side, so the strip stays coherent with the
+   * rest of the product form instead of being a decorative row.
+   */
+  buildStrip() {
+    this.strip = this.querySelector('[data-customizer-strip]');
+    if (!this.strip) return;
+    const variants = (this.config && this.config.variants) || {};
+    const seen = new Set();
+    const items = [];
+    Object.keys(variants).forEach((id) => {
+      const v = variants[id];
+      const color = v && v.color != null ? String(v.color) : '';
+      if (seen.has(color)) return; // one entry per color
+      seen.add(color);
+      if (v.front) items.push({ color, side: 'front', url: v.front });
+      if (v.back && this.enableBack) items.push({ color, side: 'back', url: v.back });
+    });
+
+    // Nothing meaningful to switch between -> keep the strip hidden.
+    if (items.length < 2) {
+      this.strip.hidden = true;
+      return;
+    }
+
+    this.strip.hidden = false;
+    this.stripButtons = items.map((it) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'product-customizer__thumb';
+      btn.dataset.color = it.color;
+      btn.dataset.side = it.side;
+      const label = it.color ? (it.side === 'back' ? `${it.color}, back` : it.color) : it.side;
+      btn.setAttribute('aria-label', `Preview ${label}`);
+      btn.setAttribute('aria-pressed', 'false');
+      const img = document.createElement('img');
+      img.src = it.url;
+      img.alt = '';
+      img.width = 72;
+      img.height = 72;
+      img.loading = 'lazy';
+      btn.appendChild(img);
+      btn.addEventListener('click', () => this.onStripClick(it.color, it.side));
+      this.strip.appendChild(btn);
+      return btn;
+    });
+    this.updateStrip();
+  }
+
+  onStripClick(color, side) {
+    if (color) this.selectColor(color);
+    this.setSide(side === 'back' ? 'back' : 'front');
+    this.updateStrip();
+  }
+
+  /** Drive Dawn's variant picker to a color value; keeps size, price and swatch in sync. */
+  selectColor(color) {
+    if (!this.colorOption) return false;
+    const vs =
+      document.getElementById('variant-selects-' + this.dataset.sectionId) ||
+      document.querySelector('variant-selects');
+    if (!vs) return false;
+
+    const radios = vs.querySelectorAll('input[type="radio"][data-option-name]');
+    for (const radio of radios) {
+      if (radio.dataset.optionName === this.colorOption && radio.value === color) {
+        if (!radio.checked) {
+          radio.checked = true;
+          radio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        return true;
+      }
+    }
+
+    const selects = vs.querySelectorAll('select');
+    for (const select of selects) {
+      const opt = Array.from(select.options).find(
+        (o) => o.dataset.optionName === this.colorOption && o.value === color
+      );
+      if (opt) {
+        if (select.value !== opt.value) {
+          select.value = opt.value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  currentColor() {
+    const v = this.config && this.config.variants && this.config.variants[this.currentVariantId];
+    return v && v.color != null ? String(v.color) : '';
+  }
+
+  updateStrip() {
+    if (!this.stripButtons) return;
+    const color = this.currentColor();
+    this.stripButtons.forEach((btn) => {
+      const active = btn.dataset.color === color && btn.dataset.side === this.side;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
   }
 
   /* ---- line item property inputs (PRD 7 / 8.3) ---- */
@@ -329,6 +454,49 @@ class ProductCustomizer extends HTMLElement {
     return `x:${Math.round(side_state.x * 100)}% y:${Math.round(side_state.y * 100)}% size:${side_state.size}`;
   }
 
+  /** "Name (#HEX)" for the cart, so the text color reads as a name, not a raw hex. */
+  colorLabel(hex) {
+    const clean = String(hex).trim().toUpperCase();
+    const name = this.colorName(hex);
+    return name ? `${name} (${clean})` : clean;
+  }
+
+  /** Nearest common color name for a hex value (by RGB distance). */
+  colorName(hex) {
+    const rgb = this.hexToRgb(hex);
+    if (!rgb) return '';
+    const named = {
+      Black: '#000000', Charcoal: '#22242A', Gray: '#808080', Silver: '#C0C0C0',
+      White: '#FFFFFF', Cream: '#F5EFDD', Beige: '#D8C7A6', Brown: '#8B4513',
+      Red: '#E01B24', Maroon: '#800000', Orange: '#FF7A00', Gold: '#D4AF37',
+      Yellow: '#FFD400', Green: '#2E9E4F', Olive: '#808000', Teal: '#008080',
+      Blue: '#1A66FF', Navy: '#1B2A4A', Purple: '#7A3FA0', Pink: '#FF6FA5',
+    };
+    let best = '';
+    let bestDist = Infinity;
+    Object.keys(named).forEach((key) => {
+      const c = this.hexToRgb(named[key]);
+      const dr = rgb.r - c.r;
+      const dg = rgb.g - c.g;
+      const db = rgb.b - c.b;
+      const dist = dr * dr + dg * dg + db * db;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = key;
+      }
+    });
+    return best;
+  }
+
+  hexToRgb(hex) {
+    let value = String(hex).trim().replace('#', '');
+    if (value.length === 3) value = value.split('').map((ch) => ch + ch).join('');
+    if (value.length !== 6) return null;
+    const num = parseInt(value, 16);
+    if (Number.isNaN(num)) return null;
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+
   /** Effective text for a side (preset or custom), trimmed. */
   sideText(side_state) {
     return (side_state.mode === 'preset' ? side_state.preset : side_state.text).trim();
@@ -350,7 +518,7 @@ class ProductCustomizer extends HTMLElement {
 
       group.text.value = active ? text : '';
       group.font.value = active ? state.font : '';
-      group.color.value = active ? state.color : '';
+      group.color.value = active ? this.colorLabel(state.color) : '';
       group.place.value = active ? this.placementString(state) : '';
 
       [group.text, group.font, group.color, group.place].forEach((input) => {
@@ -674,6 +842,7 @@ class ProductCustomizer extends HTMLElement {
     this.updateTabs();
     this.syncControls();
     this.updateDraggable();
+    this.updateStrip();
     this.renderActiveSide();
     this.dispatchEvent(new CustomEvent('customizer:sidechange', { bubbles: true, detail: { side } }));
   }
@@ -829,6 +998,7 @@ class ProductCustomizer extends HTMLElement {
     this.baseUrls = { front, back };
     if (back) this.loadImage(back).catch(() => {}); // warm cache for the back tab
     this.updateTabs(); // back availability can change per variant
+    this.updateStrip(); // reflect the newly selected color as the active thumbnail
     return this.renderActiveSide();
   }
 
