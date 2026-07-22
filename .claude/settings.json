@@ -16,7 +16,8 @@
       "Bash(python img/_make_tshirts.py)",
       "Bash(python img/_make_sweatshirts.py)",
       "Bash(rm -f img/sweatshirt-ivory-front.png img/sweatshirt-ivory-back.png img/sweatshirt-blue-jean-front.png img/sweatshirt-blue-jean-back.png img/sweatshirt-moss-front.png img/sweatshirt-moss-back.png img/sweatshirt-brick-front.png img/sweatshirt-brick-back.png img/sweatshirt-berry-front.png img/sweatshirt-berry-back.png)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(node -e ' *)"
     ]
   }
 }

@@ -32,18 +32,21 @@ class ProductCustomizer extends HTMLElement {
     this.preview = this.querySelector('[data-customizer-preview]');
     this.tabsEl = this.querySelector('[data-customizer-tabs]');
     this.panel = this.querySelector('[data-customizer-panel]');
+    this.liveRegion = this.querySelector('[data-customizer-status]');
     this.productFormId = this.dataset.productFormId;
 
     this.initState();
     this.cacheInputs();
     this.initCanvas();
     this.initDrag();
+    this.initKeyboard();
     this.buildTabs();
     this.buildControls();
     this.loadFonts();
     this.setActiveBase(this.config.selectedVariantId);
     this.subscribeToVariantChange();
     this.syncHiddenInputs();
+    this.updateDraggable();
     this.initSubmitInterception();
 
     this.setAttribute('data-ready', 'true');
@@ -99,6 +102,7 @@ class ProductCustomizer extends HTMLElement {
     Object.assign(this.state[this.side], patch);
     this.render();
     this.syncHiddenInputs();
+    this.updateDraggable();
   }
 
   /** Clamp a normalized point into the active side's print area (used by drag). */
@@ -480,12 +484,59 @@ class ProductCustomizer extends HTMLElement {
       try {
         this.canvas.releasePointerCapture(event.pointerId);
       } catch (_) {}
+      this.announcePlacement();
     };
 
     this.canvas.addEventListener('pointerdown', onDown);
     this.canvas.addEventListener('pointermove', onMove);
     this.canvas.addEventListener('pointerup', onUp);
     this.canvas.addEventListener('pointercancel', onUp);
+  }
+
+  /* ---- accessibility: keyboard placement + status ---- */
+
+  initKeyboard() {
+    if (!this.canvas) return;
+    this.canvas.setAttribute('tabindex', '0');
+    this.canvas.setAttribute(
+      'aria-label',
+      'Design preview. When text is added, use the arrow keys to move it within the print area; hold Shift for larger steps.'
+    );
+    this.canvas.addEventListener('keydown', (event) => this.onCanvasKey(event));
+  }
+
+  onCanvasKey(event) {
+    const state = this.state[this.side];
+    if (!this.sideText(state)) return; // nothing to move
+    const step = event.shiftKey ? 0.05 : 0.01;
+    let dx = 0;
+    let dy = 0;
+    switch (event.key) {
+      case 'ArrowLeft': dx = -step; break;
+      case 'ArrowRight': dx = step; break;
+      case 'ArrowUp': dy = -step; break;
+      case 'ArrowDown': dy = step; break;
+      default: return;
+    }
+    event.preventDefault();
+    const point = this.clampToPrintArea(this.side, state.x + dx, state.y + dy);
+    this.updateSide({ x: point.x, y: point.y });
+    this.announcePlacement();
+  }
+
+  announcePlacement() {
+    if (!this.liveRegion) return;
+    const state = this.state[this.side];
+    if (!this.sideText(state)) return;
+    this.liveRegion.textContent =
+      `${this.side} text moved to ${Math.round(state.x * 100)} percent across, ${Math.round(state.y * 100)} percent down.`;
+  }
+
+  /** Own touch gestures (touch-action:none) only while the active side has text to drag. */
+  updateDraggable() {
+    if (!this.canvas) return;
+    const draggable = this.sideText(this.state[this.side]).length > 0;
+    this.canvas.classList.toggle('is-draggable', draggable);
   }
 
   /* ---- config helpers ---- */
@@ -502,6 +553,13 @@ class ProductCustomizer extends HTMLElement {
 
   buildTabs() {
     if (!this.tabsEl) return;
+    const uid = this.dataset.sectionId || 'pc';
+    if (this.preview) {
+      if (!this.preview.id) this.preview.id = `pc-preview-${uid}`;
+      this.preview.setAttribute('role', 'tabpanel');
+      this.preview.setAttribute('aria-label', 'Design preview');
+    }
+
     this.tabButtons = {};
     ['front', 'back'].forEach((side) => {
       const btn = document.createElement('button');
@@ -509,12 +567,26 @@ class ProductCustomizer extends HTMLElement {
       btn.className = 'product-customizer__tab';
       btn.dataset.side = side;
       btn.setAttribute('role', 'tab');
+      if (this.preview) btn.setAttribute('aria-controls', this.preview.id);
       btn.textContent = side === 'front' ? 'Front' : 'Back';
       btn.addEventListener('click', () => this.setSide(side));
+      btn.addEventListener('keydown', (event) => this.onTabKey(event, side));
       this.tabsEl.appendChild(btn);
       this.tabButtons[side] = btn;
     });
     this.updateTabs();
+  }
+
+  /** Arrow-key navigation between tabs (WAI-ARIA tablist pattern). */
+  onTabKey(event, side) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const other = side === 'front' ? 'back' : 'front';
+    const target = this.tabButtons[other];
+    if (target && !target.hidden) {
+      this.setSide(other);
+      target.focus();
+    }
   }
 
   /** Re-evaluate back-tab availability (per variant) and reflect the active side. */
@@ -530,6 +602,7 @@ class ProductCustomizer extends HTMLElement {
       const active = side === this.side;
       btn.classList.toggle('is-active', active);
       btn.setAttribute('aria-selected', active ? 'true' : 'false');
+      btn.setAttribute('tabindex', active ? '0' : '-1'); // roving tabindex
     });
 
     // With no back option there is only one side - hide the whole tab bar.
@@ -542,6 +615,7 @@ class ProductCustomizer extends HTMLElement {
     this.side = side;
     this.updateTabs();
     this.syncControls();
+    this.updateDraggable();
     this.renderActiveSide();
     this.dispatchEvent(new CustomEvent('customizer:sidechange', { bubbles: true, detail: { side } }));
   }

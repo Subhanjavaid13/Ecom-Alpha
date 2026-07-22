@@ -1,7 +1,7 @@
 /*
  * Front/Back shirt customizer - see md/PRD-shirt-customizer.md.
- * Phase 1: scaffold layout for the preview + controls panel.
- * Text controls, side tabs and drag styles are added in later phases.
+ * Preview + side tabs + controls layout, drag cursors, exporting state,
+ * focus-visible outlines, mobile touch-action and reduced-motion handling.
  */
 
 .product-customizer {
@@ -71,15 +71,22 @@
   display: block;
   width: 100%;
   height: 100%;
-  touch-action: none; /* lets later phases own pointer drag without page scroll */
+  touch-action: pan-y; /* allow the page to scroll when there is nothing to drag */
 }
 
-.product-customizer__canvas.is-dragging {
+/* While the active side has text, own the gesture so drag works on touch. */
+.product-customizer__canvas.is-draggable {
+  touch-action: none;
+  cursor: grab;
+}
+
+.product-customizer__canvas.is-draggable.is-dragging {
   cursor: grabbing;
 }
 
-.product-customizer__canvas {
-  cursor: grab;
+.product-customizer__canvas:focus-visible {
+  outline: 0.2rem solid rgb(var(--color-foreground));
+  outline-offset: 0.2rem;
 }
 
 .product-customizer__panel {
@@ -174,4 +181,11 @@
 .pc-range:focus-visible {
   outline: 0.2rem solid rgb(var(--color-foreground));
   outline-offset: 0.2rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-customizer__tab,
+  .pc-mode__btn {
+    transition: none;
+  }
 }

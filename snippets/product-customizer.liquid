@@ -114,11 +114,19 @@
       }
     </script>
 
-    <div class="product-customizer__tabs" data-customizer-tabs role="tablist" hidden></div>
+    <div
+      class="product-customizer__tabs"
+      data-customizer-tabs
+      role="tablist"
+      aria-label="Choose side to customize"
+      hidden
+    ></div>
 
     <div class="product-customizer__preview" data-customizer-preview>
       <canvas class="product-customizer__canvas" data-customizer-canvas></canvas>
     </div>
+
+    <span class="visually-hidden" data-customizer-status role="status" aria-live="polite"></span>
 
     <div class="product-customizer__panel" data-customizer-panel></div>
 
