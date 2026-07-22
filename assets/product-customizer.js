@@ -77,12 +77,62 @@ class ProductCustomizer extends HTMLElement {
     }
   }
 
+  /**
+   * Coerce a config list value into a string array, tolerant of how the merchant
+   * stored it: a real list metafield (array), a single text field holding a JSON
+   * array string (e.g. '["Anton","Oswald"]'), or a comma-separated string.
+   */
+  normalizeList(value) {
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      const str = value.trim();
+      if (!str) return [];
+      if (str.charAt(0) === '[') {
+        try {
+          const parsed = JSON.parse(str);
+          if (Array.isArray(parsed)) return parsed.map((item) => String(item).trim()).filter(Boolean);
+        } catch (_) {
+          /* not valid JSON - fall through to comma split */
+        }
+      }
+      return str.split(',').map((item) => item.trim()).filter(Boolean);
+    }
+    return [];
+  }
+
+  /**
+   * Coerce a print-area rect from config into {x,y,w,h}, tolerant of a metaobject
+   * JSON field arriving as a real object or as a stringified JSON object.
+   */
+  normalizeRect(value, fallback) {
+    let rect = value;
+    if (typeof rect === 'string') {
+      try {
+        rect = JSON.parse(rect);
+      } catch (_) {
+        rect = null;
+      }
+    }
+    if (rect && typeof rect === 'object') {
+      const valid = ['x', 'y', 'w', 'h'].every((k) => typeof rect[k] === 'number' && isFinite(rect[k]));
+      if (valid) return rect;
+    }
+    return fallback;
+  }
+
   /* ---- per-side state ---- */
 
   initState() {
-    const defaultFont = (this.config.fonts && this.config.fonts[0]) || 'Anton';
-    this.printAreaFront = this.config.printAreaFront || { x: 0.3, y: 0.32, w: 0.4, h: 0.34 };
-    this.printAreaBack = this.config.printAreaBack || { x: 0.28, y: 0.28, w: 0.44, h: 0.4 };
+    this.fontList = this.normalizeList(this.config.fonts);
+    this.presetList = this.normalizeList(this.config.presets);
+    this.maxChars = Number(this.config.maxChars) || 24;
+    this.enableBack =
+      this.config.enableBack === true || this.config.enableBack === 'true' || this.config.enableBack === 1;
+    const defaultFont = this.fontList[0] || 'Anton';
+    this.printAreaFront = this.normalizeRect(this.config.printAreaFront, { x: 0.3, y: 0.32, w: 0.4, h: 0.34 });
+    this.printAreaBack = this.normalizeRect(this.config.printAreaBack, { x: 0.28, y: 0.28, w: 0.44, h: 0.4 });
 
     const makeSide = (pa) => ({
       mode: 'custom', // 'custom' | 'preset'
@@ -124,9 +174,9 @@ class ProductCustomizer extends HTMLElement {
   buildControls() {
     if (!this.panel) return;
     const uid = this.dataset.sectionId || 'pc';
-    const maxChars = this.config.maxChars || 24;
-    const presets = (this.config.presets || []).filter(Boolean);
-    const fonts = (this.config.fonts || []).filter(Boolean);
+    const maxChars = this.maxChars || 24;
+    const presets = this.presetList || [];
+    const fonts = this.fontList || [];
 
     const modeMarkup = presets.length
       ? `<div class="pc-field pc-mode" role="group" aria-label="Text mode">
@@ -137,7 +187,7 @@ class ProductCustomizer extends HTMLElement {
     const presetMarkup = presets.length
       ? `<div class="pc-field" data-preset-field hidden>
            <label class="form__label" for="pc-preset-${uid}">Choose a preset</label>
-           <select class="select__select pc-select" id="pc-preset-${uid}" data-preset></select>
+           <select class="pc-select" id="pc-preset-${uid}" data-preset></select>
          </div>`
       : '';
 
@@ -146,13 +196,13 @@ class ProductCustomizer extends HTMLElement {
         ${modeMarkup}
         <div class="pc-field" data-custom-field>
           <label class="form__label" for="pc-text-${uid}">Your text</label>
-          <input class="field__input pc-input" id="pc-text-${uid}" type="text" maxlength="${maxChars}" placeholder="Type your text" autocomplete="off">
+          <input class="pc-input" id="pc-text-${uid}" type="text" maxlength="${maxChars}" placeholder="Type your text" autocomplete="off">
           <span class="pc-charcount" data-charcount>0/${maxChars}</span>
         </div>
         ${presetMarkup}
         <div class="pc-field">
           <label class="form__label" for="pc-font-${uid}">Font</label>
-          <select class="select__select pc-select" id="pc-font-${uid}" data-font></select>
+          <select class="pc-select" id="pc-font-${uid}" data-font></select>
         </div>
         <div class="pc-row">
           <div class="pc-field">
@@ -171,7 +221,7 @@ class ProductCustomizer extends HTMLElement {
       const opt = document.createElement('option');
       opt.value = f;
       opt.textContent = f;
-      opt.style.fontFamily = `"${f}"`;
+      opt.style.fontFamily = `"${f}", sans-serif`;
       fontSel.appendChild(opt);
     });
 
@@ -252,7 +302,7 @@ class ProductCustomizer extends HTMLElement {
 
   updateCharCount() {
     if (!this.ctrl || !this.ctrl.charcount) return;
-    const max = this.config.maxChars || 24;
+    const max = this.maxChars || 24;
     this.ctrl.charcount.textContent = `${this.ctrl.text.value.length}/${max}`;
   }
 
@@ -551,7 +601,9 @@ class ProductCustomizer extends HTMLElement {
     const cfg = this.config;
     const entry = cfg && cfg.variants ? cfg.variants[String(variantId)] : null;
     const front = (entry && entry.front) || cfg.productImage || null;
-    const back = (entry && entry.back) || null;
+    // Fall back to the front image so the Back side is customizable even before a
+    // dedicated back mockup (custom.mockup_back) is uploaded per color.
+    const back = (entry && entry.back) || front;
     return { front, back };
   }
 
@@ -598,7 +650,7 @@ class ProductCustomizer extends HTMLElement {
   /** Re-evaluate back-tab availability (per variant) and reflect the active side. */
   updateTabs() {
     if (!this.tabButtons) return;
-    const hasBack = !!(this.config.enableBack && this.baseUrls && this.baseUrls.back);
+    const hasBack = !!(this.enableBack && this.baseUrls && this.baseUrls.back);
 
     // Edge case: on the back tab but the new variant has no back image -> fall back.
     if (!hasBack && this.side === 'back') this.side = 'front';
@@ -616,7 +668,7 @@ class ProductCustomizer extends HTMLElement {
   }
 
   setSide(side) {
-    if (side === 'back' && !(this.config.enableBack && this.baseUrls && this.baseUrls.back)) return;
+    if (side === 'back' && !(this.enableBack && this.baseUrls && this.baseUrls.back)) return;
     if (this.side === side) return;
     this.side = side;
     this.updateTabs();
@@ -715,8 +767,10 @@ class ProductCustomizer extends HTMLElement {
   /* ---- fonts (PRD 8.5: load fonts, redraw on document.fonts.ready) ---- */
 
   loadFonts() {
-    const fonts = (this.config.fonts || []).filter(Boolean);
-    if (fonts.length && !document.querySelector('link[data-customizer-fonts]')) {
+    const fonts = this.fontList || [];
+    if (!fonts.length) return;
+
+    if (!document.querySelector('link[data-customizer-fonts]')) {
       const families = fonts
         .map((f) => `family=${encodeURIComponent(f).replace(/%20/g, '+')}`)
         .join('&');
@@ -726,7 +780,14 @@ class ProductCustomizer extends HTMLElement {
       link.setAttribute('data-customizer-fonts', '');
       document.head.appendChild(link);
     }
-    if (document.fonts && document.fonts.ready) {
+
+    // Web fonts load lazily, so document.fonts.ready can resolve before a face is
+    // requested. Explicitly load each configured face, redrawing as they arrive.
+    if (document.fonts && document.fonts.load) {
+      fonts.forEach((font) => {
+        document.fonts.load(`64px "${font}"`).then(() => this.render()).catch(() => {});
+      });
+    } else if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => this.render());
     }
   }
@@ -746,7 +807,14 @@ class ProductCustomizer extends HTMLElement {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`image failed to load: ${url}`));
+      img.onerror = () => {
+        // Retry without CORS so the preview still renders; a tainted canvas just
+        // means the Phase 6 export falls back to text-only for this image.
+        const fallback = new Image();
+        fallback.onload = () => resolve(fallback);
+        fallback.onerror = () => reject(new Error(`image failed to load: ${url}`));
+        fallback.src = url;
+      };
       img.src = url;
     });
     this.imageCache.set(url, promise);

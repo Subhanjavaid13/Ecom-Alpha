@@ -176,13 +176,34 @@
 
 .pc-input,
 .pc-select {
+  box-sizing: border-box;
   width: 100%;
-  padding: 1rem 1.2rem;
+  height: 4.6rem;
+  margin: 0;
+  padding: 0 1.2rem;
+  font-family: inherit;
   font-size: 1.5rem;
+  line-height: normal;
   color: rgb(var(--color-foreground));
   background-color: rgb(var(--color-background));
-  border: 0.1rem solid rgba(var(--color-foreground), 0.25);
+  border: 0.1rem solid rgba(var(--color-foreground), 0.4);
   border-radius: var(--inputs-radius, 0.4rem);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.pc-select {
+  padding-right: 3.2rem;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 1.5rem) 50%, calc(100% - 1rem) 50%;
+  background-size: 0.5rem 0.5rem, 0.5rem 0.5rem;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.pc-input::placeholder {
+  color: rgba(var(--color-foreground), 0.5);
 }
 
 .pc-charcount {

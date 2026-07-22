@@ -26,27 +26,45 @@
   {%- liquid
     assign cfg = product.metafields.custom.customizer.value
 
-    assign print_area_front = cfg.print_area_front
+    # Metaobject fields are read via .value; fall back to direct access, then to
+    # flat product metafields, then to a default. This tolerates however the
+    # merchant stored each field (list / json / single).
+    assign print_area_front = cfg.print_area_front.value
+    if print_area_front == blank
+      assign print_area_front = cfg.print_area_front
+    endif
     if print_area_front == blank
       assign print_area_front = product.metafields.custom.print_areas.value.front
     endif
 
-    assign print_area_back = cfg.print_area_back
+    assign print_area_back = cfg.print_area_back.value
+    if print_area_back == blank
+      assign print_area_back = cfg.print_area_back
+    endif
     if print_area_back == blank
       assign print_area_back = product.metafields.custom.print_areas.value.back
     endif
 
-    assign fonts = cfg.fonts
+    assign fonts = cfg.fonts.value
+    if fonts == blank
+      assign fonts = cfg.fonts
+    endif
     if fonts == blank
       assign fonts = product.metafields.custom.fonts.value
     endif
 
-    assign presets = cfg.preset_texts
+    assign presets = cfg.preset_texts.value
+    if presets == blank
+      assign presets = cfg.preset_texts
+    endif
     if presets == blank
       assign presets = product.metafields.custom.preset_texts.value
     endif
 
-    assign max_chars = cfg.max_chars
+    assign max_chars = cfg.max_chars.value
+    if max_chars == blank
+      assign max_chars = cfg.max_chars
+    endif
     if max_chars == blank
       assign max_chars = product.metafields.custom.max_chars.value
     endif
@@ -54,7 +72,10 @@
       assign max_chars = 24
     endif
 
-    assign enable_back = cfg.enable_back
+    assign enable_back = cfg.enable_back.value
+    if enable_back == blank
+      assign enable_back = cfg.enable_back
+    endif
     if enable_back == blank
       assign enable_back = product.metafields.custom.enable_back.value
     endif
